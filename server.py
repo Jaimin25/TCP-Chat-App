@@ -1,45 +1,48 @@
 import socket
+import threading
+import tkinter as tk
+from tkinter import scrolledtext
 
-ADDRESS = "localhost"
-
-def start_server():
-    PORT = input("Enter port (must be a number): ")
-
-    if not PORT or not PORT.isdigit():
-        print("Port invalid!")
-        return
+class ChatServer:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Server Chat")
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.bind(("127.0.0.1", 8888))
+        self.server_socket.listen(1)
+        self.clients = []
+        threading.Thread(target=self.accept_clients, daemon=True).start()
+        self.chat_display = scrolledtext.ScrolledText(root, state='disabled', width=50, height=15)
+        self.chat_display.pack(pady=10)
     
-    PORT = int(PORT)
+    def accept_clients(self):
+        while True:
+            client_socket, addr = self.server_socket.accept()
+            self.clients.append(client_socket)
+            threading.Thread(target=self.handle_client, args=(client_socket,)).start()
     
-    if not PORT > 0:
-        print("Invalid port number")
-        return
+    def handle_client(self, client_socket):
+        while True:
+            try:
+                message = client_socket.recv(1024).decode("utf-8")
+                if not message:
+                    break
+                self.broadcast(message, client_socket)
+            except:
+                self.clients.remove(client_socket)
+                client_socket.close()
+                break
     
-    if PORT < 1024:
-        print(f"{PORT} is a reserved port number, please try again")
-        return
-
-    socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    socket_server.bind((ADDRESS, PORT))
-    socket_server.listen(10)
-
-    print(f"Server is running: {ADDRESS}:{PORT}\n")
-
-    client_socket, client_address = socket_server.accept()
-
-    print(f"Connected established with {client_address}\n")
-
-    while True:
-        message = client_socket.recv(1024).decode()
-
-        if message.lower() == "exit()":
-            print(f"Client {client_address} disconnect")
-            break
-            
-        print(f"Client: {message}")
-
-        response = input("Server: ")
-        client_socket.send(response.encode())
+    def broadcast(self, message, sender_socket):
+        for client in self.clients:
+            if client != sender_socket:
+                client.send(message.encode("utf-8"))
+                self.chat_display.config(state='normal')
+                self.chat_display.insert(tk.END, message + "\n")
+                self.chat_display.config(state='disabled')
+                self.chat_display.yview(tk.END)
 
 if __name__ == "__main__":
-    start_server();
+    root = tk.Tk()
+    server = ChatServer(root)
+    root.mainloop()
